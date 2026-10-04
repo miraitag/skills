@@ -1,0 +1,18 @@
+{
+  "version": "2.2.0",
+  "organization": "Scotiabank México — Equipo Móvil",
+  "date": "Octubre 2026",
+  "abstract": "React Native code-quality guide for Scotia Móvil MX projects: side effects and cleanup, hooks, context typing and reactivity, styles, hardcoded colors, lists, re-renders, components, RHF/Yup API usage, async error handling, navigation typing, animations, logging and pnpm security. 54 rules in 10 categories (Components, TypeScript, State and Hooks, Styles, Lists, Performance, APIs and Data, Navigation, Animations, Conventions). v2 is token-optimized: a zero-dependency Node scanner (scripts/scan.mjs, optional ESLint merge) runs every detection and produces the pre-change summary, rules for libraries not installed are N/A automatically, a per-project profile (.scotia-audit/profile.md, shared with the architecture package) replaces repo exploration, the default scope is the diff against the base branch, and skipped findings go to a baseline. Naming, folders and layers belong to react-native-scotia-movil-mx-architecture-skills.",
+  "references": [
+    "https://reactnative.dev/docs",
+    "https://react.dev",
+    "https://reactnavigation.org/docs/native-stack-navigator",
+    "https://docs.swmansion.com/react-native-reanimated",
+    "https://react-hook-form.com/docs/useform",
+    "https://github.com/jquense/yup",
+    "https://m3.material.io/foundations/design-tokens/overview",
+    "https://pnpm.io/supply-chain-security",
+    "https://github.com/zoontek/react-native-permissions",
+    "https://reactnative.directory"
+  ]
+}

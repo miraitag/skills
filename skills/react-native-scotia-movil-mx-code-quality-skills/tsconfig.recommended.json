@@ -1,0 +1,61 @@
+/**
+ * Recommended tsconfig for Scotia Móvil MX React Native projects and feature
+ * libraries. Single copy for both skill packages (the architecture package
+ * points here). Flags → rules they reinforce:
+ *
+ *   strict                       ts-typed-props, state-usestate-typed, state-useref-typed,
+ *                                api-typed-fetch, presentation-view-model-conventions (arch)
+ *   noImplicitReturns            data-mapper / data-gateway-impl / ui-mapper conventions (arch)
+ *   noUnusedLocals/Parameters    ts-typed-props, domain-model-conventions (arch)
+ *   verbatimModuleSyntax         `import type` for models crossing layers (arch)
+ *   noUncheckedIndexedAccess     api-typed-fetch
+ *   exactOptionalPropertyTypes   ts-typed-props, presentation-ui-model-conventions (arch)
+ *   noFallthroughCasesInSwitch   api-context-reducer (exhaustive reducers)
+ */
+{
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    // ── Type strictness ────────────────────────────────────────────────────────
+    // Enables: strictNullChecks, noImplicitAny, strictFunctionTypes,
+    //         strictBindCallApply, strictPropertyInitialization,
+    //         noImplicitThis, alwaysStrict, useUnknownInCatchVariables
+    "strict": true,
+
+    // Every branch must return (mappers, gateway implementations)
+    "noImplicitReturns": true,
+
+    // Detects variables and parameters declared but not used
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // Requires `import type` for imports that are types only
+    "verbatimModuleSyntax": true,
+
+    // Array/object indexes return T | undefined instead of T
+    "noUncheckedIndexedAccess": true,
+
+    // Optional properties `prop?: T` do not accept explicit `prop: undefined`
+    "exactOptionalPropertyTypes": true,
+
+    // Forces covering all cases in switch with no silent fallthrough
+    "noFallthroughCasesInSwitch": true,
+
+    // ── Modules ──────────────────────────────────────────────────────────────
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+
+    // ── JSX ───────────────────────────────────────────────────────────────
+    // react-native: equivalent to ReactNative in the compiler
+    "jsx": "react-native"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "lib",
+    "android",
+    "ios",
+    "**/__tests__/**",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ]
+}

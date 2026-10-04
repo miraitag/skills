@@ -1,0 +1,13 @@
+{
+  "version": "2.2.0",
+  "organization": "Scotiabank México — Equipo Móvil",
+  "date": "Octubre 2026",
+  "abstract": "Layered Clean Architecture conventions for the React Native feature libraries of Scotia Móvil MX: file and symbol naming, layer placement (domain / data / presentation / public), mappers, view-model to UI model mapping, contexts and state ownership, navigation files, values, form structure and the public API. 24 rules in 6 categories (v2.2: screen-decomposition-conventions + refactor-reviewer agent) (v2.1: values/regex and values/dates, screen texts and strings.common.empty, write requests via toDataModel, single <screen>.view-model.ts naming). v2 is token-optimized: a zero-dependency Node scanner (scripts/scan.mjs) runs every detection and produces the pre-change summary, a per-project profile (.scotia-audit/profile.md, shared with the code-quality package) replaces repo exploration, the default scope is the diff against the base branch, and skipped findings go to a baseline. Each check has exactly one owner across both packages; implementation quality belongs to react-native-scotia-movil-mx-code-quality-skills.",
+  "references": [
+    "https://reactnative.dev/docs",
+    "https://react.dev",
+    "https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html",
+    "https://pnpm.io",
+    "https://www.typescriptlang.org/tsconfig"
+  ]
+}
