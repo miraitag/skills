@@ -7,7 +7,8 @@
 //   node <skill>/scripts/scan.mjs --skip=<id>:<file>:<line>[,...]   add skipped findings to the baseline
 //   node <skill>/scripts/scan.mjs --init-profile       create/print .scotia-audit/profile.md
 // --eslint merges the project's own ESLint results for mapped rules (more precise, slower).
-// Topics owned by the architecture skill (names, locations, layers) are NOT detected here.
+// Topics owned by the architecture skill (names, locations, layers, values/) are NOT detected here.
+// Dates rules decide which date API is used and whether date logic is correct.
 
 import { execSync } from 'node:child_process';
 import { relative } from 'node:path';
@@ -35,6 +36,34 @@ const tags = (ctx, name, pred, note) => ctx.fileCheckAll(TSX, (src, f, push) => 
 
 // body of each hook call: useEffect(…) etc.
 const callBodies = (ctx, src, name) => ctx.blocks(src, new RegExp(`\\b${name}\\s*\\(`));
+
+// ── Dates helpers ──
+const COMMENT = /^\s*(\/\/|\*|\/\*)/;
+const GETTER = /\.get(UTC)?(Date|Month|FullYear|Hours|Minutes|Seconds|Day)\(\)/;
+const GETTERS = new RegExp(GETTER.source, 'g');
+const DATE_LIBS = ['moment', 'moment-timezone', 'dayjs', 'luxon', 'date-fns'];
+const RTF_POLYFILLS = ['@formatjs/intl-relativetimeformat', 'hermes-intl'];
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const valuesDir = (ctx) => ctx.profile.values_root || `${ctx.P}/values`;
+const notValues = (ctx) => (h) => !h.file.startsWith(`${valuesDir(ctx)}/`);
+const isData = (ctx, f) => f.startsWith(`${ctx.P}/data/`);
+const isUi = (ctx, f) => new RegExp(`^(${esc(ctx.P)}/presentation|${esc(ctx.S)}/public)/`).test(f) || TSX.test(f);
+
+const indent = (l) => l.match(/^\s*/)[0].length;
+// nearest enclosing function header above line i (by indentation), or null at module scope
+function enclosingFn(lines, i) {
+  let cur = indent(lines[i]);
+  for (let k = i - 1; k >= 0; k--) {
+    const l = lines[k]; if (!l.trim() || COMMENT.test(l)) continue;
+    const ind = indent(l); if (ind >= cur) continue;
+    if (/=>|\bfunction\b|^\s*(async\s+)?\w+\s*\([^)]*\)\s*(:\s*[\w<>[\], |.]+)?\s*\{\s*$/.test(l)) return l;
+    if (ind === 0) return null;
+    cur = ind;
+  }
+  return null;
+}
+const near = (lines, i, re, before = 6) => lines.slice(Math.max(0, i - before), i + 1).some((l) => re.test(l));
 
 const rules = [
   // ── Components ──
@@ -311,6 +340,108 @@ const rules = [
     const lines = src.split('\n');
     lines.forEach((l, i) => { if (/\bconsole\.(log|debug|info|warn|error)\(/.test(l) && !/__DEV__/.test(l) && !/__DEV__/.test(lines.slice(Math.max(0, i - 3), i).join(' '))) push(i + 1, l, 'console.* without __DEV__ guard'); });
   }) },
+
+  // ── Dates (which API / correctness; values location is architecture values-conventions) ──
+  { id: 'date-api-choice', cat: 'Dates', impact: 'HIGH', heuristic: true, check: (ctx) => {
+    const NOTE = 'manual date formatting (evaluate Intl.DateTimeFormat)';
+    return [
+      ...ctx.fileCheckAll(CODE, (src, f, push) => {
+        if (isData(ctx, f)) return; // transport formats live in the data layer
+        const lines = src.split('\n');
+        lines.forEach((l, i) => {
+          if (COMMENT.test(l)) return;
+          const getters = (l.match(GETTERS) || []).length;
+          if (getters >= 2 && /\$\{|\+\s*['"`]|['"`]\s*\+|padStart|\.join\(/.test(l)) push(i + 1, l, NOTE);
+          else if (/\.padStart\(\s*2\s*,\s*['"]0['"]\s*\)/.test(l) && lines.slice(Math.max(0, i - 3), i + 4).some((x) => GETTER.test(x))) push(i + 1, l, NOTE);
+        });
+      }),
+      ...ctx.grep(CODE, /\[\s*['"](Ene(ro)?|Jan(uary)?|Lun(es)?|Dom(ingo)?|Mon(day)?|Sun(day)?)['"]\s*,/, { not: COMMENT, note: 'month / weekday names by hand (Intl provides them)' }),
+      ...ctx.grep(CODE, /\.(toDateString|toUTCString|toGMTString)\(\)|new Date\([^)]*\)\.toString\(\)/, { not: COMMENT, note: 'debug date format used as text' }),
+    ].filter((h) => !isData(ctx, h.file));
+  } },
+  { id: 'date-formatter-reuse', cat: 'Dates', impact: 'MEDIUM', heuristic: true, check: (ctx) => ctx.fileCheckAll(CODE, (src, f, push) => {
+    const lines = src.split('\n');
+    lines.forEach((l, i) => {
+      if (COMMENT.test(l)) return;
+      if (/new Intl\.DateTimeFormat\(/.test(l) && enclosingFn(lines, i) && !near(lines, i, /useMemo\(/, 3)) push(i + 1, l, 'formatter created per call/render (module scope or useMemo)');
+      else if (/\.toLocale(Date|Time)?String\(/.test(l) && near(lines, i, /\.(map|forEach|reduce|flatMap)\(|renderItem|\bfor\s*\(/, 4)) push(i + 1, l, 'toLocale*String in a list/loop (one formatter per item)');
+    });
+  }) },
+  { id: 'date-relative-time', cat: 'Dates', impact: 'LOW', heuristic: true, check: (ctx) => [
+    ...ctx.grep(CODE, /['"`]\s*[Hh]ace\s+(\$\{|\{|\d)|\$\{[^}]+\}\s*(d[ií]as?|horas?|min\w*)\b|\bago['"`]|['"`](ayer|Ayer|ma[ñn]ana|Ma[ñn]ana|yesterday|Yesterday|tomorrow|Tomorrow)['"`]/, { not: COMMENT, note: 'relative time built by hand (one helper / Intl.RelativeTimeFormat)' }),
+    ...(RTF_POLYFILLS.some((d) => ctx.has(d)) ? [] : ctx.grep(CODE, /\bIntl\.RelativeTimeFormat\b/, { not: COMMENT, note: 'Intl.RelativeTimeFormat is not in Hermes (no polyfill in package.json)' })),
+  ] },
+
+  { id: 'date-parsing', cat: 'Dates', impact: 'CRITICAL', check: (ctx) => ctx.fileCheckAll(CODE, (src, f, push) => {
+    src.split('\n').forEach((l, i) => {
+      if (COMMENT.test(l)) return;
+      for (const m of l.matchAll(/new Date\(\s*(['"`])([^'"`]*)\1\s*\)/g)) {
+        const s = m[2];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) push(i + 1, l, 'date-only string parsed as UTC (previous day in Mexico)');
+        else if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) push(i + 1, l, 'non-ISO string (Invalid Date on Hermes)');
+      }
+      if (/\bDate\.parse\(/.test(l)) push(i + 1, l, 'Date.parse: engine-dependent (explicit parse in the data mapper)');
+      const arg = l.match(/new Date\(\s*([\w$.?[\]'"]+)\s*\)/);
+      if (arg && !/^\d|^Date\.now|^['"`]/.test(arg[1]) && (/_/.test(arg[1]) || (isData(ctx, f) && /(date|Date|At|fecha|Fecha)$/.test(arg[1])))) push(i + 1, l, 'string from the API parsed with new Date (confirm format: date-only → UTC)');
+      if (/new Date\(\s*[\w.]+\s*,\s*[\w.]*[mM](onth|es)\w*\s*,/.test(l) && !/[mM](onth|es)\w*\s*-\s*1/.test(l)) push(i + 1, l, 'month argument is 0-based (confirm - 1)');
+    });
+  }) },
+  { id: 'date-locale-timezone', cat: 'Dates', impact: 'HIGH', check: (ctx) => {
+    const tz = ctx.profile.date_time_zone;
+    const DATEISH = /\b\w*([dD]ate|At|[tT]ime|today|now)\w*\??\.toLocaleString\(/;
+    return [
+      ...ctx.grep(CODE, /\.toLocale(Date|Time)String\(\s*(undefined\s*)?[,)]|\b\w*([dD]ate|At|[tT]ime|today|now)\w*\??\.toLocaleString\(\s*(undefined\s*)?[,)]|Intl\.DateTimeFormat\(\s*(undefined|\[\s*\])?\s*[,)]/, { not: COMMENT, note: 'device locale (pass dates.locale)' }),
+      ...ctx.grep(CODE, /(\.toLocale(Date|Time)String|Intl\.(DateTimeFormat|RelativeTimeFormat))\(\s*['"`][a-z]{2}(-[A-Z]{2})?['"`]/, { not: COMMENT, note: 'locale literal (use dates.locale)' }),
+      ...ctx.grep(CODE, /\.toLocaleString\(\s*['"`][a-z]{2}(-[A-Z]{2})?['"`]/, { not: COMMENT, note: 'locale literal (use dates.locale)' }).filter((h) => DATEISH.test(h.text)),
+      ...ctx.grep(CODE, /toISOString\(\)\s*\.\s*(split\(\s*['"]T['"]\s*\)|slice\(\s*0\s*,\s*10\s*\)|substr(ing)?\(\s*0\s*,\s*10\s*\))/, { not: COMMENT, note: 'toISOString is UTC: next day after 18:00 in Mexico' }),
+      ...ctx.grep(CODE, /\bgetTimezoneOffset\(\)/, { not: COMMENT, note: 'manual offset (use the timeZone option)' }),
+      ...(tz && tz !== 'device' && tz !== 'unknown' ? ctx.fileCheckAll(CODE, (src, f, push) => {
+        for (const b of ctx.blocks(src, /\bIntl\.DateTimeFormat\s*\(/)) if (!/timeZone/.test(b.text)) push(b.line, 'Intl.DateTimeFormat(…)', `no timeZone (profile date_time_zone: ${tz})`);
+      }) : []),
+    ].filter(notValues(ctx));
+  } },
+  { id: 'date-arithmetic-comparison', cat: 'Dates', impact: 'HIGH', check: (ctx) => ctx.fileCheckAll(CODE, (src, f, push) => {
+    src.split('\n').forEach((l, i) => {
+      if (COMMENT.test(l)) return;
+      const mult = l.match(/\b(24|60|1000|1_000)\s*\*\s*(24|60|1000|1_000)\s*\*\s*(24|60|1000|1_000)(\s*\*\s*(24|60|1000|1_000))?/);
+      if (/\b(86400000|86_400_000|864e5|8\.64e7)\b/.test(l) || (mult && /\b24\b/.test(mult[0]) && /\b1_?000\b/.test(mult[0]))) push(i + 1, l, 'day as milliseconds (calendar math)');
+      if (/\b\w*([dD]ate|At)\b\s*[!=]==?\s*\w*([dD]ate|At)\b(?!\s*\.|\s*\()/.test(l) && !/getTime\(\)|null|undefined|typeof/.test(l)) push(i + 1, l, 'dates compared by reference (getTime())');
+      if (/setMonth\([^)]*getMonth\(\)\s*[+-]/.test(l)) push(i + 1, l, 'setMonth(getMonth() ± n) overflows month end (addMonths)');
+      if (/\.getYear\(\)/.test(l)) push(i + 1, l, 'getYear is deprecated (getFullYear)');
+    });
+  }) },
+  { id: 'date-render-purity', cat: 'Dates', impact: 'MEDIUM', heuristic: true, check: (ctx) => ctx.fileCheckAll(/\.tsx$|\.view-model\.ts$/, (src, f, push) => {
+    const lines = src.split('\n');
+    const NOW = /new Date\(\)|Date\.now\(\)/;
+    lines.forEach((l, i) => {
+      if (COMMENT.test(l) || !NOW.test(l) || /\buse(State|Memo|Ref|Callback)\(\s*\(\)\s*=>/.test(l)) return;
+      if (/\buseState\(\s*new Date\(/.test(l)) { push(i + 1, l, 'useState(new Date()) → lazy initializer'); return; }
+      if (TSX.test(f) && /(=\{|>\s*\{|^\s*\{)[^}]*(new Date\(\)|Date\.now\(\))/.test(l) && /<|=\{/.test(l)) { push(i + 1, l, 'now read in JSX'); return; }
+      const fn = enclosingFn(lines, i);
+      if (fn && /^\s*(export\s+)?(const|function)\s+([A-Z]\w*|use[A-Z]\w*)\b/.test(fn) && /^\s*(const|let)\s+[\w{}[\], ]+\s*=/.test(l)) push(i + 1, l, 'now read at render (view-model / handler / lazy initializer)');
+    });
+  }) },
+
+  { id: 'date-library', cat: 'Dates', impact: 'MEDIUM', check: (ctx) => {
+    const hits = [];
+    if (ctx.scopeIsFull || ctx.inScope(/^package\.json$/)) {
+      const libs = DATE_LIBS.filter((d) => ctx.runtime[d] || ctx.deps[d]);
+      if (libs.some((d) => d.startsWith('moment'))) hits.push(fileHit('package.json', 'moment', 'moment is in maintenance mode (Intl + native / date-fns)'));
+      const families = new Set(libs.map((d) => d.replace(/-timezone$/, '')));
+      if (families.size > 1) hits.push(fileHit('package.json', [...families].join(', '), 'more than one date library'));
+    }
+    hits.push(...ctx.grep(CODE, /from ['"]moment(-timezone)?['"]|require\(['"]moment/, { note: 'moment import' }));
+    hits.push(...ctx.fileCheckAll(CODE, (src, f, push) => {
+      if (isData(ctx, f) || !isUi(ctx, f)) return;
+      const fns = /from ['"]date-fns(\/[\w-]+)?['"]/.test(src) && /\bformat\b/.test(src.match(/import[^;]*from ['"]date-fns[^'"]*['"]/g)?.join(' ') || '');
+      const chain = /from ['"](dayjs|moment|luxon)['"]/.test(src);
+      src.split('\n').forEach((l, i) => {
+        if (COMMENT.test(l)) return;
+        if ((fns && /(^|[^.\w])format\(\s*[^,]+,\s*[\w.'"`]/.test(l)) || (chain && /\.(format|toFormat)\(\s*[\w.'"`]/.test(l))) push(i + 1, l, 'library pattern for UI text (evaluate Intl.DateTimeFormat)');
+      });
+    }));
+    return hits;
+  } },
 ];
 
 const cmp = (a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' });

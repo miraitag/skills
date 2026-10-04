@@ -6,8 +6,9 @@
 Interactive audit of **React / React Native code quality** for Scotia Móvil
 México projects: side effects and cleanup, hooks, context typing and
 reactivity, styles, hardcoded colors, lists, re-renders, components, RHF/Yup
-API usage, async error handling, navigation typing, animations, logging and
-pnpm security. **54 rules in 10 categories.** File naming, folders and layers
+API usage, async error handling, navigation typing, animations, logging,
+pnpm security and dates (`Date` vs `Intl.DateTimeFormat` per usage, parsing,
+locale / time zone, date math). **62 rules in 11 categories.** File naming, folders and layers
 live in `react-native-scotia-movil-mx-architecture-skills`.
 
 ## Structure
@@ -48,6 +49,7 @@ node <skill>/scripts/scan.mjs --init-profile          # once per project → .sc
 node <skill>/scripts/scan.mjs [--eslint]              # summary (auto scope)
 node <skill>/scripts/scan.mjs --scope=full            # or diff | <path>; --base=<ref>
 node <skill>/scripts/scan.mjs --only=state,lists      # category prefix or rule ids
+node <skill>/scripts/scan.mjs --only=dates           # date API choice and correctness (evaluated)
 node <skill>/scripts/scan.mjs --rule=lists-stable-keys    # every candidate hit of one rule
 node <skill>/scripts/scan.mjs --skip=<rule>:<file>:<line> # add a finding to the baseline
 ```
@@ -94,6 +96,22 @@ node <skill>/scripts/scan.mjs --skip=<rule>:<file>:<line> # add a finding to the
 - `state-useref-typed` flags `useState` values that are never read or never
   rendered (→ remove or `useRef`).
 
+## Changes in v2.3
+
+- New category **Dates** (8 rules, prefix `date-`): `date-parsing`,
+  `date-locale-timezone`, `date-arithmetic-comparison`, `date-render-purity`,
+  `date-api-choice`, `date-formatter-reuse`, `date-relative-time`,
+  `date-library`. For each usage the rule's decision table picks `Date`,
+  `Intl.DateTimeFormat`, `Intl.RelativeTimeFormat` (only with a polyfill:
+  Hermes lacks it) or `date-fns`; findings are shown with a `Decision` column
+  and "keep" decisions go to the baseline. A fix also cleans the same lines
+  per the architecture rules (`values/dates.ts`, `strings`, `regex`, `dimens`,
+  `utils-params`), and after Dates fixes the touched files are checked with
+  the architecture `values-conventions` / `utils-conventions` scanners.
+- Shared scanner core: profile template adds `model_verb_exceptions`,
+  `domain_forbidden_terms`, `date_locale` (default `es-MX`) and
+  `date_time_zone` (`device` or an IANA zone).
+
 ## Rule categories
 
 | Category | Impact | Rules |
@@ -108,3 +126,4 @@ node <skill>/scripts/scan.mjs --skip=<rule>:<file>:<line> # add a finding to the
 | Navigation | HIGH | 1 |
 | Animations | HIGH | 1 |
 | Conventions | MEDIUM | 5 |
+| Dates | HIGH | 8 |

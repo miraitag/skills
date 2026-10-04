@@ -73,6 +73,7 @@ Each check has exactly one owner.
 | Context | files, provider as composition root, accessors in `contexts/hooks`, no raw `useContext` in screens, single state ownership | `createContext<T \| undefined>`, guard `throw`, memoized value, reactive state |
 | Navigation | navigator / params files, where the ParamList lives, no logic, close via host | native-stack, ParamList as generic, typed screen props and `navigate()` |
 | Values | `values/{colors,dimens,strings,regex,dates}.ts`; screen texts → `strings`, `''` → `strings.common.empty`, regex literals → `regex`, date formats → `dates` | hardcoded colors (fix order: `canvasTheme` via the canvas-core hook, then `values/colors.ts`) |
+| Dates | where formats / `Intl` options, `locale`, `timeZone` live (`values/dates.ts`) | which date API per usage, parsing, locale / time zone, date math, formatter reuse, date libraries (`date-*`) |
 | Styles | collocated in the component `.tsx`, no styles file | `StyleSheet.create` vs inline, `Platform.select`, `gap`, `satisfies`, single style without array |
 | Props and params | `<comp>.props.ts` / `*.utils-params.ts` files and suffixes | interface, `Readonly<Props>`, no `any`, members A→Z, destructured in the signature A→Z without `...rest` |
 | Forms | four artifacts, names, layer split, runtime deps, schema file, `createYupSchema`, messages from strings, dynamic-form structure | `Controller`, `yupResolver`, `handleSubmit` + `isValid`, Yup authoring, dynamic schema `useMemo` + `reset`, `useFieldArray`, touched |
@@ -95,3 +96,31 @@ dependencies → `forms-conventions`; gateway calls in screens →
 - New `agents/refactor-reviewer.agent.md` (repository root): applies those criteria file by file. The
   audit only reports the metrics and hands the files to the agent, so whole-file
   reads never happen inside the audit.
+
+## Changes in v2.3
+
+- `naming-conventions`: nouns only — no action verbs in model **file names** nor
+  in any declared interface / namespace / type (domain and data always, UI by
+  default). Exceptions for business terms or duplication: profile key
+  `model_verb_exceptions` or the baseline. Transport terms (`Request`,
+  `Response`, `Payload`, `DTO`, `Body`, `Json`, `Raw`…) are forbidden in domain
+  and UI names; extra terms with `domain_forbidden_terms`.
+- `domain-model-conventions`: main `export interface XDomainModel`; the
+  interfaces it needs go below it in `export namespace XDomainModel` (domain
+  only). No second top-level symbol, no inline object types.
+- `data-model-conventions`: with a request and/or response, the main symbol is
+  `export namespace XDataModel` with nested **namespaces** `Request` /
+  `Response` (`Payload` + nested interfaces). Data only.
+- `presentation-view-model-conventions`: a gateway result stored in state always
+  goes through `toUiModel` (create the UI model and mapper when missing; no
+  field-by-field copying); data sent through the gateway always goes through
+  `XMapper.toDataModel(formFields | uiModel)`.
+- `presentation-ui-mapper-conventions` / `data-mapper-conventions`: direction
+  tables for `toDataModel` in presentation (UI / form → domain) and data
+  (domain → API request).
+- `utils-conventions`: every `<name>.utils.ts` needs its sibling
+  `<name>.utils-params.ts`; functions with input take one object typed
+  `<Name>UtilsParams.<FnName>`.
+- `values-conventions`: `dates.ts` also holds `locale` / `timeZone`; the date API
+  choice belongs to the new code-quality **Dates** category (`date-*`).
+  Template literals made only of interpolations are no longer reported as text.

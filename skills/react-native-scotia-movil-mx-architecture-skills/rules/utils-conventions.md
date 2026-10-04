@@ -19,9 +19,15 @@ Rules for utility files under `src/private/presentation`.
    - Shared component: `screens/components/<comp>/utils/<comp>.utils.ts`.
 2. **Pure functions and named exports**: only pure functions (no side-effects),
    exported by name. Never `export default`.
-3. **Parameters typed by namespace**: when a utility receives an input object,
-   type it with a namespace in a sibling `*.utils-params.ts` file:
-   `export namespace XUtilsParams { export interface FnName { ... } }`.
+3. **Every `<name>.utils.ts` has its sibling `<name>.utils-params.ts`.** Each
+   exported function that receives input takes **one object** typed with an
+   interface of that namespace — never positional parameters or inline object
+   types:
+   `export namespace <Name>UtilsParams { export interface <FnName> { … } }`
+   (namespace = PascalCase of the file name + `UtilsParams`, interface =
+   PascalCase of the function name). Functions without input are exempt. If the
+   params file does not exist, **create it** and move every parameter shape
+   into it.
 4. **No state or React**: utils do not use hooks or touch the DOM/UI; if they
    need state or effects, that goes in a hook (see `hooks-conventions`).
 5. *(Code-quality, not here)* the params object is destructured in the
@@ -58,12 +64,18 @@ grep -rn "export default" $(find src/private/presentation -name "*.utils.ts")
 grep -rn "useState\|useEffect\|useRef\|useCallback" $(find src/private/presentation -name "*.utils.ts")
 # Params without a *UtilsParams namespace
 grep -rL "UtilsParams" $(find src/private/presentation -name "*.utils-params.ts" -o -name "*.utils.params.ts")
+# utils without their sibling utils-params file
+for f in $(find src/private/presentation -name "*.utils.ts"); do [ -f "${f%.utils.ts}.utils-params.ts" ] || echo "missing params: $f"; done
+# exported functions with positional / inline-typed parameters
+grep -nE "^export (const \w+ = (async )?\(|function \w+\()[a-z]\w*\s*:|^export (const \w+ = \(|function \w+\()\{[^}]*\}\s*:\s*\{" $(find src/private/presentation -name "*.utils.ts")
 ```
 
 **Correction:**
 
 1. Move the utility to a `utils/` folder next to its feature.
 2. Convert to pure functions with named exports.
-3. Extract the parameters to an `XUtilsParams` namespace in `*.utils-params.ts`.
+3. Create `<name>.utils-params.ts` if missing, add one interface per function
+   (members A→Z) and change each signature to
+   `({ a, b }: <Name>UtilsParams.<FnName>)`.
 4. If it has state/effects, convert it to a hook.
 5. `pnpm typecheck` + `pnpm lint --fix`.

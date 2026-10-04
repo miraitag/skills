@@ -6,7 +6,7 @@ los dos skills y los dos agentes de este repositorio con GitHub Copilot en VS Co
 | Pieza | Tipo | Qué hace | Cuándo usarla |
 | --- | --- | --- | --- |
 | `react-native-scotia-movil-mx-architecture-skills` | Skill | Audita **dónde vive el código y cómo se llama**: capas, nombres, mappers, view-models, `values/`, formularios, API pública y tamaño de pantallas | Primero, siempre |
-| `react-native-scotia-movil-mx-code-quality-skills` | Skill | Audita **cómo está implementado**: efectos y cleanup, hooks, estilos, colores, listas, tipado, RHF/Yup, navegación, logs | Después de arquitectura |
+| `react-native-scotia-movil-mx-code-quality-skills` | Skill | Audita **cómo está implementado**: efectos y cleanup, hooks, estilos, colores, listas, tipado, RHF/Yup, navegación, logs y **fechas** (`Date` vs `Intl.DateTimeFormat` por uso, parseo, zona horaria; se evalúa antes de aplicar) | Después de arquitectura |
 | **Architecture Reviewer** (`architecture-reviewer.agent.md`) | Agente | Revisión de arquitectura en una sola pasada, sin diálogos (solo reporte o reporte + corrección) | Revisión rápida antes de un PR, o un reporte para compartir |
 | **Refactor Reviewer** (`refactor-reviewer.agent.md`) | Agente | Divide pantallas o componentes grandes y extrae código a hook, util, view-model, UI mapper o `values/`, archivo por archivo y con aprobación | Sobre los archivos que el skill de arquitectura marca como candidatos |
 
@@ -134,6 +134,10 @@ Esto crea `.scotia-audit/profile.md`. Revísalo, sobre todo:
 | `typecheck_cmd`, `lint_cmd` | Comandos de validación tras cada corrección |
 | `theme_hook` | Hook de canvas-core que expone `canvasTheme` (`useCanvasCoreTheme`) |
 | `max_component_lines`, `max_jsx_elements`, `max_state_hooks`, `max_handlers` | Umbrales para marcar pantallas o componentes grandes |
+| `model_verb_exceptions` | Nombres de modelos que pueden llevar verbo (término de negocio o duplicidad), separados por coma |
+| `domain_forbidden_terms` | Palabras de transporte adicionales prohibidas en dominio (`Request`, `Response`, `Payload`, `DTO`… ya vienen incluidas) |
+| `date_locale` | Locale de toda fecha visible (`es-MX`); va a `values/dates.ts` como `dates.locale` |
+| `date_time_zone` | `device` (hora del teléfono) o una zona IANA (`America/Mexico_City`) para horarios de negocio |
 | `exclude`, `disabled_rules` | Archivos a ignorar y reglas que el equipo no aplica en este proyecto |
 
 **Haz commit de `.scotia-audit/`.** Así el perfil y los hallazgos omitidos
@@ -153,6 +157,7 @@ En el chat, en modo Agent, con el slash command y opcionalmente un argumento:
 /react-native-scotia-movil-mx-architecture-skills --scope=src/private/presentation/screens/transfers
 /react-native-scotia-movil-mx-code-quality-skills --only=state,lists
 /react-native-scotia-movil-mx-code-quality-skills --eslint
+/react-native-scotia-movil-mx-code-quality-skills --only=dates
 ```
 
 También se activan con lenguaje natural ("audita la arquitectura de este
@@ -169,12 +174,21 @@ Qué esperar:
    va al baseline y no vuelve a aparecer.
 4. Un resumen final.
 
+En la categoría **Dates** del skill de calidad, la tabla del paso 3 agrega la
+columna `Decision`: para cada uso propone `Intl.DateTimeFormat`, `Date`,
+`date-fns` o `Keep — motivo` (lo que decidas conservar va al baseline). Al
+aplicar, también limpia esas mismas líneas según las reglas de arquitectura
+(`values/dates`, `strings`, `regex`, `dimens`, `utils-params`) y luego revisa
+los archivos que tocó con el escáner de arquitectura, de nuevo para tu
+evaluación.
+
 | Argumento | Efecto |
 | --- | --- |
 | *(ninguno)* | `diff` contra `base_branch` si ya existe un baseline; si no, `full` |
 | `--scope=full` / `diff` / `<ruta>` | Todo el proyecto / solo los cambios / una carpeta o archivo |
 | `--only=<categoría o regla,…>` | Limitar a categorías (`Presentation`, `state`…) o reglas concretas |
 | `--base=<ref>` | Rama base distinta para `diff` |
+| `--only=dates` *(calidad)* | Solo la categoría de fechas |
 | `--eslint` *(calidad)* | Suma los resultados del ESLint del proyecto (más preciso) |
 
 ### Agentes
@@ -209,7 +223,7 @@ edita nada hasta que lo apruebas.
  │ 1. Skill de arquitectura │──▶│ 2. Refactor Reviewer    │──▶│ 3. Skill de calidad       │
  │ nombres, capas, values,  │   │ pantallas grandes →     │   │ efectos, hooks, estilos,  │
  │ mappers, view-models     │   │ subcomponentes, hooks,  │   │ tipado, listas, colores   │
- │ (+ candidatos grandes)   │   │ utils                   │   │                           │
+ │ (+ candidatos grandes)   │   │ utils                   │   │ y fechas (Date vs Intl)   │
  └──────────────────────────┘   └─────────────────────────┘   └───────────────────────────┘
                                                                             │
                                      4. typecheck + lint + tests + commit ◀─┘

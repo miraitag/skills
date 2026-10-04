@@ -12,7 +12,7 @@ description: >
 license: MIT
 metadata:
   author: Scotiabank México — Equipo Móvil
-  version: '2.2.0'
+  version: '2.3.0'
 ---
 
 # Scotia Móvil MX — Architecture Audit
@@ -123,22 +123,22 @@ Then a table `Category | Applied | Skipped` for the categories reviewed.
 
 | Category | Rule (`rules/<id>.md`) | Impact |
 | --- | --- | --- |
-| Names | `naming-conventions` — model file/symbol suffixes, noun names, transport terms only in data | HIGH |
+| Names | `naming-conventions` — model file/symbol suffixes; nouns (no verbs) in model file names and declarations; transport terms only in data | HIGH |
 | Names | `conv-kebab-case-files` — file case per `naming_variant` | MEDIUM |
 | Names | `conv-ts-file-suffixes` — semantic suffixes, no generic `types.ts` | MEDIUM |
-| Domain | `domain-model-conventions` — pure models, no barrel, no snake_case | HIGH |
+| Domain | `domain-model-conventions` — pure models; main `interface XDomainModel` + same-name `namespace` below for nested interfaces; no transport words | HIGH |
 | Domain | `domain-gateway-conventions` — interface returns `Promise<Result<Domain, ServiceError>>` | HIGH |
-| Data | `data-model-conventions` — `XDataModel` namespaces, no cross-layer imports | HIGH |
+| Data | `data-model-conventions` — `namespace XDataModel` with nested `Request` / `Response` namespaces; no inline types, no cross-layer imports | HIGH |
 | Data | `data-mapper-conventions` — only `toDomainModel` / `toDataModel` exported | HIGH |
 | Data | `data-gateway-impl-conventions` — HTTP → mapper → `Result`, no leaks; post/put/patch bodies only via `Mapper.toDataModel` | HIGH |
 | Presentation | `presentation-screen-conventions` — `.screen.tsx`, renders only, UI models only | CRITICAL |
 | Presentation | `presentation-ui-model-conventions` — `XUiModel` view shape, no data/domain imports | CRITICAL |
-| Presentation | `presentation-ui-mapper-conventions` — only `toUiModel` exported | CRITICAL |
-| Presentation | `presentation-view-model-conventions` — only `<screen>.view-model.ts` + `use<Screen>ScreenViewModel`; gateway result ⇒ `toUiModel`; `UiState` only UI models | CRITICAL |
+| Presentation | `presentation-ui-mapper-conventions` — only `toUiModel` / `toDataModel` exported | CRITICAL |
+| Presentation | `presentation-view-model-conventions` — only `<screen>.view-model.ts` + `use<Screen>ScreenViewModel`; gateway result ⇒ `toUiModel` (create UI model + mapper); sent data ⇒ `toDataModel`; `UiState` only UI models | CRITICAL |
 | Presentation structure | `screen-components-conventions` — `components/` only in `screens/`, props file, collocated styles | HIGH |
 | Presentation structure | `screen-decomposition-conventions` — size metrics (lines, JSX, state hooks, handlers), `renderX()` and long pure functions inside components → handed to the Refactor Reviewer agent | MEDIUM |
 | Presentation structure | `hooks-conventions` — when / name / location / `.ts` vs `.tsx` of every hook | HIGH |
-| Presentation structure | `utils-conventions` — pure `*.utils.ts` + `*.utils-params.ts` in `utils/` | MEDIUM |
+| Presentation structure | `utils-conventions` — pure `*.utils.ts` + mandatory sibling `*.utils-params.ts` (one typed object param) in `utils/` | MEDIUM |
 | Presentation structure | `contexts-provider-conventions` — files, DI in provider, accessors only from `contexts/hooks` | HIGH |
 | Presentation structure | `contexts-state-conventions` — state contracts location, single ownership | HIGH |
 | Presentation structure | `navigation-conventions` — `*.navigator.tsx` + `*.params.ts`, no logic | HIGH |
@@ -157,3 +157,8 @@ inline · native-stack and typed `navigate` calls · Rules of Hooks · `any` and
 props typing, alphabetical order of interface members and destructuring
 without `...rest` · single style without array · `tsconfig` strictness (`tsconfig.recommended.json` lives in the
 code-quality package).
+
+Dates: which date API is used (`Date` vs `Intl.DateTimeFormat` vs a library),
+parsing, locale / time zone, date arithmetic and comparisons are code-quality
+`date-*` rules. Here only the *location* of date formats (`values/dates.ts`)
+is audited.

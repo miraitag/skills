@@ -30,7 +30,7 @@ values/
 | `dimens.ts`  | `dimens`   | Sizes, spacing, radii specific to the feature             | `dimens.card.radius`             |
 | `strings.ts` | `strings`  | Screen copy, validation messages, `common.empty`          | `strings.beneficiaries.title`    |
 | `regex.ts`   | `regex`    | Regular expressions (validation, masks, parsing)          | `regex.basicPasswordRegex`       |
-| `dates.ts`   | `dates`    | Date / time format patterns and `Intl` format options     | `dates.formats.shortDate`        |
+| `dates.ts`   | `dates`    | `Intl` format options / patterns, `locale`, `timeZone`    | `dates.formats.shortDate`        |
 
 ### Rules
 
@@ -55,7 +55,9 @@ values/
    literals, and are allowed.
 5. **Date formats live in `dates.ts`.** Format strings (`'DD/MM/YYYY'`,
    `'yyyy-MM-dd'`, `'HH:mm'`) and `Intl.DateTimeFormat` / `toLocaleDateString`
-   option objects are declared once in `dates` and reused.
+   option objects are declared once in `dates` and reused. *Which* date API is
+   used (`Date`, `Intl`, a library), locale / time zone and date correctness
+   are reviewed by the code-quality **Dates** rules (`date-*`).
 6. **Colors:** `canvasTheme` first; `values/colors.ts` only for colors the
    design system does not provide. Detection and fixing of hardcoded colors is
    the code-quality rule `conv-design-tokens` (single owner), which uses this
@@ -68,7 +70,7 @@ values/
 // beneficiaries.screen.tsx
 const [alias, setAlias] = useState('');                       // ❌ empty literal
 const isValidClabe = /^\d{18}$/.test(clabe);                   // ❌ regex literal
-const date = format(transfer.date, 'DD/MM/YYYY');              // ❌ date format literal
+const date = transfer.date.toLocaleDateString(dates.locale, { day: '2-digit', month: '2-digit', year: 'numeric' }); // ❌ inline options
 <CanvasText>Mis beneficiarios</CanvasText>                     // ❌ screen text literal
 <CanvasTextField labelParams={{ text: 'Alias' }} />            // ❌ label literal
 ```
@@ -89,7 +91,12 @@ export const regex = {
 
 // values/dates.ts
 export const dates = {
-  formats: { shortDate: 'DD/MM/YYYY', time: 'HH:mm' },
+  formats: {
+    shortDate: { day: '2-digit', month: '2-digit', year: 'numeric' },
+    time: { hour: '2-digit', minute: '2-digit' },
+  } satisfies Record<string, Intl.DateTimeFormatOptions>,
+  locale: 'es-MX',
+  timeZone: 'America/Mexico_City',
 };
 ```
 
@@ -97,7 +104,7 @@ export const dates = {
 // beneficiaries.screen.tsx
 const [alias, setAlias] = useState(strings.common.empty);       // ✅
 const isValidClabe = regex.clabe.test(clabe);                   // ✅
-const date = format(transfer.date, dates.formats.shortDate);    // ✅
+const date = transfer.date.toLocaleDateString(dates.locale, dates.formats.shortDate); // ✅
 <CanvasText>{strings.beneficiaries.title}</CanvasText>          // ✅
 <CanvasTextField labelParams={{ text: strings.beneficiaries.aliasLabel }} /> // ✅
 <CanvasButton variant="primary" size="small" />                 // ✅ configuration, not copy

@@ -1,6 +1,6 @@
 # react-native-scotia-movil-mx-architecture-skills — AGENTS.md
 
-> Compiled document. Version 2.0.0
+> Compiled document. Version 2.3.0
 > Organization: Scotiabank México — Equipo Móvil
 > 24 rules · 6 categories · Layered Clean Architecture
 
@@ -30,9 +30,14 @@ verbs.
 | Data            | `.data-model.ts`   | `XDataModel`   |
 | Domain          | `.domain-model.ts` | `XDomainModel` |
 
-Use nouns: `GetAccounts`→`Accounts`, `CreateBeneficiary`→`BeneficiaryCreation`,
-`SearchBanks`→`BankSearch`, `ValidateFields`→`FieldValidation`. Mapper/gateway
-methods do keep verbs (they are operations).
+Use nouns in model **file names and every declared interface / namespace /
+type** (domain and data always; UI by default): `GetAccounts`→`Accounts`,
+`CreateBeneficiary`→`BeneficiaryCreation`, `SearchBanks`→`BankSearch`,
+`ValidateFields`→`FieldValidation`. Exceptions (business term, duplication):
+`model_verb_exceptions` in the profile or the baseline. Mapper/gateway methods
+and util functions keep verbs (they are operations). Transport terms
+(`Request`, `Response`, `Payload`, `DTO`, `Body`, `Json`, `Raw`…) are forbidden in
+domain and UI names (extra terms: `domain_forbidden_terms`).
 
 Details: [naming-conventions.md](rules/naming-conventions.md)
 
@@ -56,8 +61,11 @@ Details: [conv-ts-file-suffixes.md](rules/conv-ts-file-suffixes.md)
 
 ### 2.1 Pure domain models (HIGH)
 
-`*.domain-model.ts`, `XDomainModel` symbol, pure types: no imports from
-data/presentation, no transport `snake_case`, camelCase properties.
+`*.domain-model.ts`, pure types: no imports from data/presentation, no
+transport `snake_case` or transport words, camelCase properties. The main model
+is `export interface XDomainModel`; any other interface it needs goes **below
+it** inside `export namespace XDomainModel { export interface … }` (declaration
+merging) — no second top-level symbol and no inline object types.
 
 Details: [domain-model-conventions.md](rules/domain-model-conventions.md)
 
@@ -74,8 +82,11 @@ Details: [domain-gateway-conventions.md](rules/domain-gateway-conventions.md)
 
 ### 3.1 Data models (HIGH)
 
-`*.data-model.ts`, `namespace XDataModel` with `Request`/`Response`. They mirror
-the transport shape (`snake_case` allowed). No imports from other layers.
+`*.data-model.ts`. When there is a request and/or a response, the main symbol
+is `export namespace XDataModel` with nested **namespaces** `Request` /
+`Response`, each holding `Payload` and one interface per nested object. They
+mirror the transport shape (`snake_case` allowed). No inline object types and no
+imports from other layers.
 
 Details: [data-model-conventions.md](rules/data-model-conventions.md)
 
@@ -115,8 +126,10 @@ Details: [presentation-ui-model-conventions.md](rules/presentation-ui-model-conv
 
 ### 4.3 UI mappers (CRITICAL)
 
-`*.mapper.ts` without model suffixes. They export only `toUiModel`; private helpers.
-They translate `XDomainModel` → `XUiModel`. No misplaced static lists.
+`*.mapper.ts` without model suffixes. They export only `toUiModel` (domain →
+UI) and/or `toDataModel` (form fields / UI model → the domain input of the
+gateway); private helpers. They never produce or import data models. No
+misplaced static lists.
 
 Details: [presentation-ui-mapper-conventions.md](rules/presentation-ui-mapper-conventions.md)
 
@@ -124,8 +137,10 @@ Details: [presentation-ui-mapper-conventions.md](rules/presentation-ui-mapper-co
 
 File: only `<screen>.view-model.ts` exposing `use<Screen>ScreenViewModel`.
 Core rule: every view-model that consumes the gateway maps each domain result to
-a UI model via `toUiModel`. `UiState` only with UI models. `Result<void>` writes
-are exempt.
+a UI model via `toUiModel` (create the UI model and mapper if missing; no field
+copying inline). Inverse: data sent through the gateway is built with
+`XMapper.toDataModel(formFields | uiModel)`, never an inline object or spread.
+`UiState` only with UI models. `Result<void>` writes are exempt from `toUiModel`.
 
 Details: [presentation-view-model-conventions.md](rules/presentation-view-model-conventions.md)
 
@@ -159,8 +174,10 @@ Details: [hooks-conventions.md](rules/hooks-conventions.md)
 ### 5.3 Utilities (MEDIUM)
 
 `*.utils.ts` in a `utils/` folder next to the feature; pure functions, named
-exports, parameters by namespace `XUtilsParams` in `*.utils-params.ts`. Function
-names can be verbs (operations).
+exports. Every utils file has its sibling `<name>.utils-params.ts` (create it if
+missing) with `export namespace <Name>UtilsParams { export interface <FnName> }`;
+each function with input receives one object of that type (no positional or
+inline-typed params). Function names can be verbs (operations).
 
 Details: [utils-conventions.md](rules/utils-conventions.md)
 
@@ -196,8 +213,9 @@ Details: [navigation-conventions.md](rules/navigation-conventions.md)
 `values/` with `colors.ts`, `dimens.ts`, `strings.ts`, `regex.ts`, `dates.ts`:
 constant objects, grouped by domain. Screen texts come from `strings` (component
 configuration / variant strings excepted), empty strings are
-`strings.common.empty`, regex literals live in `regex`, date formats in `dates`.
-No logic. (Hardcoded colors → code-quality `conv-design-tokens`: `canvasTheme`
+`strings.common.empty`, regex literals live in `regex`, date formats / `Intl`
+options, `locale` and `timeZone` in `dates`. No logic. (Which date API and date
+correctness → code-quality Dates rules `date-*`.) (Hardcoded colors → code-quality `conv-design-tokens`: `canvasTheme`
 first, `values/colors.ts` as fallback.)
 
 Details: [values-conventions.md](rules/values-conventions.md)

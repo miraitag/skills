@@ -5,18 +5,20 @@ description: >
   projects: side effects and cleanup, hook dependencies and Rules of Hooks,
   context typing and reactivity, inline styles, hardcoded colors, lists and
   keys, re-renders, images, modals, RHF/Yup API usage, async error handling,
-  navigation typing, animations, logging and pnpm security. Use for "review code
-  quality / performance / hooks / styles". Not for file naming, folders or
-  layer boundaries — that is react-native-scotia-movil-mx-architecture-skills.
+  navigation typing, animations, logging, pnpm security and dates (Date vs
+  Intl.DateTimeFormat per usage, parsing, locale / time zone, date math,
+  evaluated before applying). Use for "review code quality / performance /
+  hooks / styles / dates". Not for file naming, folders or layer boundaries —
+  that is react-native-scotia-movil-mx-architecture-skills.
 license: MIT
 metadata:
   author: Scotiabank México — Equipo Móvil
-  version: '2.2.0'
+  version: '2.3.0'
 ---
 
 # Scotia Móvil MX — React Native Code-Quality Audit
 
-Audits **how the code is implemented**: 54 rules in 10 categories (index at
+Audits **how the code is implemented**: 62 rules in 11 categories (index at
 the end). Naming, folders and layers belong to
 `react-native-scotia-movil-mx-architecture-skills`; see **Boundaries** and never
 report those topics here.
@@ -46,6 +48,9 @@ report those topics here.
 - Profile missing → `SCAN --init-profile` writes a draft from `package.json`,
   lockfiles and folder probes. Ask **one** `vscode_askQuestions` only about
   fields left `unknown` (max 2 questions), save the answers in the file.
+- Older profile without `date_locale` / `date_time_zone` → assume `es-MX` /
+  `device`; ask once (and append both lines) only when a Dates rule is
+  reviewed.
 
 ## Step 2 — Scan and pre-change summary
 
@@ -78,7 +83,7 @@ rules the scanner cannot detect. Empty selection → stop.
 ## Step 3 — Review each selected rule
 
 Order: Components → TypeScript → State and Hooks → Styles → Lists →
-Performance → APIs and Data → Navigation → Animations → Conventions.
+Performance → APIs and Data → Dates → Navigation → Animations → Conventions.
 
 1. `SCAN --rule=<id>` → full hit list (more than 25 hits → batches with
    `--limit=25 --offset=<n>` or a narrower `--scope=<folder>`). For a manual rule, the candidate files
@@ -96,6 +101,17 @@ Performance → APIs and Data → Navigation → Animations → Conventions.
 
    Header `"<N> findings — Rule <i>/<total>: <id>"`. Options: `Apply all`
    (recommended) · `Choose one by one` · `Skip all` · `Cancel audit`.
+
+   **Dates rules (`date-*`) are an evaluation, not a blind fix**: the table
+   adds `Decision` after `Finding` — the API the rule file's decision table
+   picks for that usage (`Intl.DateTimeFormat`, `Date`, `date-fns`,
+   `Intl.RelativeTimeFormat`) or `Keep — <reason>` (e.g. transport format in
+   the data layer). `Fix` also lists the clean-up of the **same lines** per the
+   architecture rules: format options / locale / time zone → `values/dates.ts`,
+   texts → `values/strings.ts` (`''` → `strings.common.empty`), patterns →
+   `values/regex.ts`, sizes → `values/dimens.ts`, a new util → its
+   `<name>.utils-params.ts` (create missing files). "Keep" rows are applied as
+   **Skip** (baseline).
    No confirmed findings → print `✅ <id>: no confirmed findings` and go on.
 6. Act:
    - **Apply all** — apply each fix, save, then validate once:
@@ -109,6 +125,13 @@ Performance → APIs and Data → Navigation → Animations → Conventions.
 7. If more rules remain, dialog header
    `"<id>: <a> applied, <s> skipped · Next: <next-id> (<impact>, <hits> hits)"`,
    options `Continue` (recommended) · `Skip next rule` · `Cancel audit`.
+
+**After Dates fixes** (only if files changed): for each touched file run
+`node <architecture-skill-folder>/scripts/scan.mjs --scope=<file> --only=values-conventions,utils-conventions`
+(sibling folder `../react-native-scotia-movil-mx-architecture-skills`; missing →
+skip in one line) plus this skill's `SCAN --scope=<file> --only=conv-design-tokens,ts-alphabetical-properties,ts-destructured-props`.
+Hits → one table `# | Location | Owner rule | Finding | Proposed fix` and one
+dialog `Apply all` · `Choose one by one` · `Leave for the owner rule`.
 
 ## Step 4 — Final summary (no further tool calls)
 
@@ -131,6 +154,7 @@ Then a table `Category | Applied | Skipped` for the categories reviewed.
 | Navigation (HIGH) | `nav-stack-navigator` |
 | Animations (HIGH) | `anim-gpu` |
 | Conventions (MEDIUM) | `conv-design-tokens`, `conv-theme-provider`, `conv-pnpm`, `conv-native-manifest`, `conv-dev-logging` |
+| Dates (HIGH) | `date-parsing`, `date-locale-timezone`, `date-arithmetic-comparison`, `date-render-purity`, `date-api-choice`, `date-formatter-reuse`, `date-relative-time`, `date-library` |
 
 `*` manual-only (judgment). Rules whose library is not in `package.json`
 (permissions, biometrics, RHF, navigation…) are reported as N/A automatically.
@@ -146,3 +170,6 @@ schema file location · `values/` (screen texts, `strings.common.empty`,
 `regex`, `dates`) · navigation file structure and `ParamList` location ·
 public API surface · splitting a large screen / component and deciding what moves to a hook, util or view-model (`screen-decomposition-conventions` + Refactor Reviewer agent). Hardcoded colors are reported **here** (`conv-design-tokens`:
 `canvasTheme` first, `values/colors.ts` as fallback).
+Dates: *which* API and date correctness are reported **here** (`date-*`); the
+*location* of formats / `Intl` options, locale and time zone (`values/dates.ts`)
+is architecture `values-conventions`.

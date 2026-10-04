@@ -16,15 +16,15 @@ Rules for `src/private/data/mapper/*.mapper.ts`.
 
 | Mapper          | Layer where it lives          | From → To         | When                                    |
 | --------------- | ----------------------------- | ----------------- | --------------------------------------- |
-| `toDataModel`   | data (sometimes presentation) | Domain → API DTO  | When **sending** data to the backend    |
+| `toDataModel`   | data                          | Domain → API DTO  | When **sending** data to the backend    |
 | `toDomainModel` | data                          | API DTO → Domain  | When **receiving** the backend response |
 | `toUiModel`     | presentation                  | Domain → UI Model | When **displaying** data on a screen    |
 
 - In the **data** layer only `toDomainModel` and `toDataModel` live. `toUiModel`
   NEVER lives here (it belongs to presentation).
-- `toDataModel` may exceptionally live in **presentation** when the screen builds
-  the send payload directly; even so it maps Domain → API DTO, not
-  UI Model → API DTO.
+- Presentation also has a `toDataModel`, but in the other step of the chain:
+  UI / form → domain (gateway input). See `presentation-ui-mapper-conventions`.
+  Only the **data** `toDataModel` produces API DTOs.
 
 1. **File**: `*.mapper.ts` — the name reflects only the concept/operation
    (`accounts.mapper.ts`, `search-banks.mapper.ts`). No `-data-model`,

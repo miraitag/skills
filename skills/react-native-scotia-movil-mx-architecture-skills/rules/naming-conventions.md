@@ -37,18 +37,37 @@ only under `domain/`, `XDataModel` only under `data/`, `XUiModel` only under
 
 ### 3. Noun-based names (no action verbs)
 
+Following Clean Architecture, a **model is a noun** (the concept), never an
+action. This applies to the **file name** and to **every declaration inside the
+file** — main interface / namespace and nested namespaces / interfaces.
+
+| Layer | Applies |
+| --- | --- |
+| Domain (`*.domain-model.ts`) | Always |
+| Data (`*.data-model.ts`) | Always |
+| UI (`*.ui-model.ts`) | By default; a UI model may use a verb only when its purpose requires it (e.g. it describes an action button of the view) |
+
+Exceptions — a business rule names the concept with a verb, or the noun form
+would collide with an existing model — are recorded explicitly: in
+`model_verb_exceptions` of `.scotia-audit/profile.md` (comma-separated symbol or
+file names) or by skipping the finding into the baseline. Never silently.
+
 **Incorrect:**
 
 ```
-GetAccounts        CreateBeneficiary     DeleteBeneficiary
-SearchBanks        ValidateFields        SelectBeneficiaryCountry
+get-accounts.data-model.ts          export namespace GetAccountsDataModel
+create-beneficiary.domain-model.ts  export interface CreateBeneficiaryDomainModel
+search-banks.ui-model.ts            export interface SearchBanksUiModel
+                                    export namespace AccountsDataModel { export interface GetBalance … }
 ```
 
 **Correct:**
 
 ```
-Accounts           BeneficiaryCreation   BeneficiaryDeletion
-BankSearch         FieldValidation       BeneficiaryCountry
+accounts.data-model.ts               AccountsDataModel
+beneficiary-creation.domain-model.ts BeneficiaryCreationDomainModel
+bank-search.ui-model.ts              BankSearchUiModel
+Accounts  BeneficiaryCreation  BeneficiaryDeletion  BankSearch  FieldValidation  BeneficiaryCountry  Balance
 ```
 
 Legitimate nouns that are kept: `BankSearchParams`, `ExchangeRateQuery`,
@@ -66,8 +85,20 @@ Legitimate nouns that are kept: `BankSearchParams`, `ExchangeRateQuery`,
 
 ### 4. Transport terms reserved for data
 
-The words `Request`, `Response`, `Payload`, and `DTO` are **reserved for the
-data layer** (API DTOs). They must NOT appear in domain or UI names:
+The words `Request`, `Response`, `Payload`, `DTO` and their variants (`Dto`,
+`Req`, `Res`, `Resp`, `Body`, `Json`, `Raw`, `Api…Model`) are **reserved for
+the data layer** (API DTOs).
+
+- **Domain layer — file names and implementation:** they must not appear in
+  the file name (`beneficiary-request.domain-model.ts` ❌), in any declared
+  type / interface / namespace / enum (including nested ones) nor in property
+  names (`requestPayload: …` ❌). The domain names the business concept
+  (`BeneficiaryCreationDomainModel`, `creation`, `beneficiary`), not the
+  transport artifact.
+- **UI layer — declared names:** they must not appear in UI model names either.
+
+Extra terms the team wants to forbid go in `domain_forbidden_terms` of the
+profile (comma-separated).
 
 | Layer          | Correct                          | Incorrect                       |
 | -------------- | -------------------------------- | ------------------------------- |
@@ -85,8 +116,13 @@ data layer** (API DTOs). They must NOT appear in domain or UI names:
 find src -name "*-ui.model.ts" -o -name "*.response.ts" -o -name "*.request.model.ts"
 find src -path "*/model/*-model.ts" ! -name "*.ui-model.ts" ! -name "*.data-model.ts" ! -name "*.domain-model.ts"
 find src/private/domain/model src/private/data/api/model -name "*.model.ts"
-grep -rhnE "^export (interface|namespace|type) (Get|Create|Delete|Edit|Select|Calculate|Search|Validate)\w*(Ui|Data|Domain)?Model" src/private
-grep -rnE "^export (interface|type|namespace|class) \w*(Request|Response|Payload|DTO)\b" src/private/domain src/private/presentation
+# Verbs in model file names and in any declaration inside model files
+find src/private -name "*-model.ts" | grep -E "/(get|post|put|patch|fetch|create|delete|remove|update|edit|select|calculate|search|validate|send|save|set|add|load|submit|register|verify|check|confirm|cancel|generate|retrieve|process|find|make|do)-"
+grep -rnE "(interface|namespace|type) (Get|Post|Put|Patch|Fetch|Create|Delete|Remove|Update|Edit|Select|Calculate|Search|Validate|Send|Save|Set|Add|Load|Submit|Register|Verify|Check|Confirm|Cancel|Generate|Retrieve|Process|Find|Make|Do)[A-Z]" src/private --include="*-model.ts"
+# Transport terms in the domain: file names, declarations and properties
+find src/private/domain -iname "*request*" -o -iname "*response*" -o -iname "*payload*" -o -iname "*dto*"
+grep -rnE "(interface|type|namespace|enum|class) \w*(Request|Response|Payload|DTO|Dto|Req|Resp|Body|Json)\b|^\s+\w*(request|response|payload|dto|Request|Response|Payload|Dto|DTO)\w*\??:" src/private/domain
+grep -rnE "(interface|type|namespace|class) \w*(Request|Response|Payload|DTO)\b" src/private/presentation
 # Suffix declared in the wrong layer
 grep -rnE "export (interface|type|namespace|class) \w+DomainModel\b" src/private/data src/private/presentation
 grep -rnE "export (interface|type|namespace|class) \w+DataModel\b" src/private/domain src/private/presentation

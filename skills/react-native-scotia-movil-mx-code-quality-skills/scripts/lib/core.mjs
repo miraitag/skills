@@ -311,7 +311,8 @@ function initProfile(root, profile) {
   try { const gp = readFileSync(join(root, 'android/gradle.properties'), 'utf8'); const m = gp.match(/newArchEnabled\s*=\s*(\w+)/); if (m) arch = m[1] === 'true' ? 'new' : 'old'; } catch { /* none */ }
   if (arch === 'unknown' && /^0\.(7[6-9]|[89]\d)/.test(ver)) arch = 'new (RN default)';
   const usesList = ['react-hook-form', 'yup', '@hookform/resolvers', '@react-navigation/native-stack', '@react-navigation/stack', 'react-native-reanimated',
-    'react-native-permissions', 'react-native-biometrics', 'redux', '@reduxjs/toolkit', 'zustand', '@shopify/flash-list', 'react-native-safe-area-context']
+    'react-native-permissions', 'react-native-biometrics', 'redux', '@reduxjs/toolkit', 'zustand', '@shopify/flash-list', 'react-native-safe-area-context',
+    'date-fns', 'dayjs', 'moment', 'luxon', '@formatjs/intl-relativetimeformat', 'hermes-intl']
     .filter((d) => deps[d]);
   const ds = Object.keys(deps).filter((d) => /canvas-core|lego-ui/.test(d));
   const head = git(root, 'symbolic-ref --short refs/remotes/origin/HEAD');
@@ -337,6 +338,10 @@ max_component_lines: 200   # screen-decomposition-conventions thresholds
 max_jsx_elements: 40
 max_state_hooks: 4
 max_handlers: 6
+model_verb_exceptions:    # model names allowed to contain a verb (business term / duplication), comma-separated
+domain_forbidden_terms:   # extra transport words forbidden in domain names (Request, Response, Payload, DTO… are built in)
+date_locale: es-MX        # locale of every date shown to the user (values/dates.ts → dates.locale)
+date_time_zone: device    # device | IANA zone (America/Mexico_City) for business times
 uses: ${usesList.join(', ')}
 exclude:                  # extra globs, comma-separated (defaults already skip tests, lib/, node_modules)
 disabled_rules:           # rule ids the team does not apply in this project

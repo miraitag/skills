@@ -69,6 +69,18 @@ on the operating system UI thread.
 **Description:** M3 design tokens (single owner of hardcoded colors),
 ThemeProvider, pnpm, native permissions, and **DEV** guards.
 
+## 11. Dates (date)
+
+**Impact:** HIGH
+**Description:** Which date API each usage needs — `Date` for instants and
+math, `Intl.DateTimeFormat` for text the user reads (created once), relative
+time only with a polyfill on Hermes — and date correctness: date-only strings
+parsed as UTC, non-ISO strings on Hermes, implicit locale / time zone,
+`toISOString()` used as a local date, millisecond day math, reference
+comparisons, "now" read during render, one date library at most. Findings are
+**evaluated** (Decision column) before applying; where formats, locale, texts
+and regex live (`values/`) is the architecture rule `values-conventions`.
+
 > Ownership: every check lives in exactly one rule of one package. File/symbol
 > names (including the hook `use` prefix), folders, file locations and layer
 > boundaries are audited by `react-native-scotia-movil-mx-architecture-skills`.

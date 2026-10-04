@@ -14,7 +14,15 @@ import { run, basename, matchClose } from './lib/core.mjs';
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const under = (ctx, sub) => new RegExp(`^${esc(ctx.P)}/${sub}`);
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*(\.[a-z0-9]+(-[a-z0-9]+)*)*$/;
+const VERBS = 'get|post|put|patch|fetch|create|delete|remove|update|edit|select|calculate|search|validate|send|save|set|add|load|submit|register|verify|check|confirm|cancel|generate|retrieve|process|find|make|do';
 const VERB_MODEL = /^export (interface|namespace|type) (Get|Create|Delete|Edit|Select|Calculate|Search|Validate)\w*(Ui|Data|Domain)?Model\b/;
+const VERB_DECL = new RegExp(`\\b(interface|namespace|type)\\s+((?:${VERBS.split('|').map((v) => v[0].toUpperCase() + v.slice(1)).join('|')})[A-Z]\\w*)`);
+const VERB_FILE = new RegExp(`^(?:${VERBS})-`);
+const MODEL_FILE = /(\.|-)model\.ts$/;
+const TRANSPORT = 'Request|Response|Payload|DTO|Dto|Req|Resp|Res|Body|Json|Raw';
+const list = (v) => (v ? String(v).split(',').map((x) => x.trim()).filter(Boolean) : []);
+// top-level declarations of a model file (column 0)
+const topLevel = (src) => [...src.matchAll(/^(export\s+)?(interface|type|enum|class|namespace)\s+(\w+)/gm)].map((m) => ({ kind: m[2], name: m[3], exported: Boolean(m[1]), index: m.index }));
 const fileHit = (file, text, note) => ({ file, line: 1, text, note });
 const hasLayers = (ctx) => ctx.exists(ctx.P) || `no ${ctx.P}/ (layers_root in profile)`;
 
@@ -26,8 +34,27 @@ const rules = [
     ...ctx.files.filter((f) => f.startsWith(`${ctx.P}/`) && /\/model\/[^/]*-model\.ts$/.test(f) && !/\.(ui|data|domain)-model\.ts$/.test(f)).map((f) => fileHit(f, basename(f), 'legacy -model suffix')),
     ...ctx.files.filter((f) => under(ctx, 'domain/model/').test(f) && /\.model\.ts$/.test(f) && !/\.domain-model\.ts$/.test(f)).map((f) => fileHit(f, basename(f), 'domain model file must be *.domain-model.ts')),
     ...ctx.files.filter((f) => under(ctx, 'data/api/model/').test(f) && /[^-]\.model\.ts$/.test(f) && !/\.data-model\.ts$/.test(f) && !/\.request\.model\.ts$/.test(f)).map((f) => fileHit(f, basename(f), 'data model file must be *.data-model.ts')),
-    ...ctx.grep(under(ctx, ''), VERB_MODEL, { note: 'verb in model name' }),
-    ...ctx.grep(new RegExp(`^${esc(ctx.P)}/(domain|presentation)/`), /^export (interface|type|namespace|class) \w*(Request|Response|Payload|DTO)\b/, { note: 'transport term outside data' }),
+    // models are nouns: file names and every declaration inside model files (data, domain, ui by default)
+    ...(() => {
+      const allowed = new Set(list(ctx.profile.model_verb_exceptions));
+      const isModel = (f) => f.startsWith(`${ctx.P}/`) && MODEL_FILE.test(f);
+      return [
+        ...ctx.files.filter((f) => isModel(f) && VERB_FILE.test(basename(f)) && !allowed.has(basename(f))).map((f) => fileHit(f, basename(f), 'verb in model file name (models are nouns)')),
+        ...ctx.grep({ test: isModel }, VERB_DECL, { note: 'verb in model name (models are nouns)' }).filter((h) => !allowed.has((h.text.match(VERB_DECL) || [])[2])),
+        ...ctx.grep(under(ctx, ''), VERB_MODEL, { note: 'verb in model name (models are nouns)' }).filter((h) => !isModel(h.file)),
+      ];
+    })(),
+    // transport terms: forbidden in the domain (file names, declarations, properties) and in UI names
+    ...(() => {
+      const terms = [...TRANSPORT.split('|'), ...list(ctx.profile.domain_forbidden_terms)].join('|');
+      const dom = new RegExp(`^${esc(ctx.P)}/domain/`);
+      return [
+        ...ctx.files.filter((f) => dom.test(f) && /(request|response|payload|dto)/i.test(basename(f))).map((f) => fileHit(f, basename(f), 'transport term in domain file name')),
+        ...ctx.grep(dom, new RegExp(`\\b(interface|type|namespace|enum|class)\\s+\\w*(${terms})\\b`), { note: 'transport term in domain declaration' }),
+        ...ctx.grep(dom, /^\s+(readonly\s+)?\w*(request|response|payload|dto|Request|Response|Payload|Dto|DTO)\w*\??\s*:/, { note: 'transport term in domain property' }),
+        ...ctx.grep(new RegExp(`^${esc(ctx.P)}/presentation/`), /\b(interface|type|namespace|class)\s+\w*(Request|Response|Payload|DTO|Dto)\b/, { note: 'transport term in UI name' }),
+      ];
+    })(),
     // symbol suffix must match the layer that declares it
     ...ctx.grep(new RegExp(`^${esc(ctx.P)}/(data|presentation)/`), /^\s*export (interface|type|namespace|class) \w+DomainModel\b/, { note: 'DomainModel declared outside domain/' }),
     ...ctx.grep(new RegExp(`^${esc(ctx.P)}/(domain|presentation)/`), /^\s*export (interface|type|namespace|class) \w+DataModel\b/, { note: 'DataModel declared outside data/' }),
@@ -50,7 +77,23 @@ const rules = [
     const re = under(ctx, 'domain/model/');
     return [
       ...ctx.files.filter((f) => re.test(f) && /\/index\.tsx?$/.test(f)).map((f) => fileHit(f, basename(f), 'barrel index in domain/model')),
-      ...ctx.grep(new RegExp(`${re.source}.*\\.domain-model\\.ts$`), /^export (interface|namespace) \w+/, { not: /DomainModel(\s|\{|$|<)/, note: 'symbol without DomainModel suffix' }),
+      ...ctx.fileCheckAll(new RegExp(`${re.source}.*\.domain-model\.ts$`), (src, f, push) => {
+        const tops = topLevel(src);
+        const main = tops.find((t) => t.kind === 'interface' && /DomainModel$/.test(t.name)) || tops.find((t) => t.kind === 'interface');
+        if (!main) {
+          const t = tops[0]; if (t) push(ctx.lineOf(src, t.index), `${t.kind} ${t.name}`, 'main domain model must be an exported interface XDomainModel');
+          return;
+        }
+        if (!/DomainModel$/.test(main.name)) push(ctx.lineOf(src, main.index), main.name, 'symbol without DomainModel suffix');
+        for (const t of tops) {
+          if (t === main) continue;
+          if (t.kind === 'namespace' && t.name === main.name) continue; // declaration merging: allowed
+          push(ctx.lineOf(src, t.index), `${t.kind} ${t.name}`, t.kind === 'namespace'
+            ? `namespace must have the main interface name (${main.name})`
+            : `move into 'export namespace ${main.name} { … }' below the main interface`);
+        }
+        src.split('\n').forEach((l, i) => { if (/^\s+(readonly\s+)?\w+\??\s*:\s*(Array<\s*)?\{/.test(l)) push(i + 1, l, `inline object type (declare it in namespace ${main.name})`); });
+      }),
       ...ctx.grep(re, /from '.*\/(data|presentation)\//, { note: 'imports another layer' }),
       ...ctx.grep(re, /^\s*[a-z]+_[a-z0-9_]+\??:/, { note: 'snake_case transport field' }),
       ...ctx.grep(new RegExp(`^${esc(ctx.S)}/`), /from '[^']*\/domain\/model'/, { note: 'import through domain/model barrel' }),
@@ -69,7 +112,18 @@ const rules = [
   { id: 'data-model-conventions', cat: 'Data', impact: 'HIGH', applies: hasLayers, check: (ctx) => {
     const re = under(ctx, 'data/api/model/');
     return [
-      ...ctx.grep(new RegExp(`${re.source}.*\\.data-model\\.ts$`), /^export namespace \w+/, { not: /DataModel\s*\{/, note: 'namespace without DataModel suffix' }),
+      ...ctx.grep(new RegExp(`${re.source}.*\.data-model\.ts$`), /^export namespace \w+/, { not: /DataModel\s*\{/, note: 'namespace without DataModel suffix' }),
+      ...ctx.fileCheckAll(new RegExp(`${re.source}.*\.data-model\.ts$`), (src, f, push) => {
+        const tops = topLevel(src);
+        const main = tops.find((t) => /DataModel$/.test(t.name)) || tops[0];
+        const hasTransport = /\b(Request|Response)\b/.test(src);
+        if (main && hasTransport && main.kind !== 'namespace') push(ctx.lineOf(src, main.index), `${main.kind} ${main.name}`, 'has Request/Response: main model must be a namespace');
+        for (const t of tops) if (t !== main && !(t.kind === main?.kind && t.name === main?.name) && !/(Request|Response)$/.test(t.name)) push(ctx.lineOf(src, t.index), `${t.kind} ${t.name}`, `move into namespace ${main ? main.name : 'XDataModel'}`);
+        src.split('\n').forEach((l, i) => {
+          if (/\b(interface|type)\s+\w*(Request|Response)\b/.test(l)) push(i + 1, l.trim(), 'Request/Response must be a namespace (with Payload + nested interfaces)');
+          if (/^\s+(readonly\s+)?\w+\??\s*:\s*(Array<\s*)?\{/.test(l)) push(i + 1, l, 'inline object type (declare a nested interface)');
+        });
+      }),
       ...ctx.grep(re, /from '.*\/(domain|presentation)\//, { note: 'imports another layer' }),
     ];
   } },
@@ -123,8 +177,10 @@ const rules = [
   { id: 'presentation-view-model-conventions', cat: 'Presentation', impact: 'CRITICAL', applies: hasLayers, heuristic: true, check: (ctx) => [
     ...ctx.files.filter((f) => under(ctx, 'presentation/').test(f) && /view[-._]?model/i.test(basename(f)) && !/^[a-z0-9]+(-[a-z0-9]+)*\.view-model\.ts$/.test(basename(f))).map((f) => fileHit(f, basename(f), 'view-model file must be <screen>.view-model.ts')),
     ...ctx.grep(under(ctx, 'presentation/'), /^export (const|function) [A-Z]\w*ViewModel\b/, { note: 'view-model hook must be use<Screen>ScreenViewModel' }),
-    ...ctx.grep(/view[-._]?model\.tsx?$/i, /\.value(\s|,|;|\)|\.)/, { fileHas: /Gateway/, not: /toUiModel|Mapper|\.value\.(success|length|map\(\s*\w+Mapper)/, note: 'gateway result stored without toUiModel' }),
+    ...ctx.grep(/view[-._]?model\.tsx?$/i, /\.value(\s|,|;|\))/, { fileHas: /Gateway/, not: /toUiModel|Mapper/, note: 'gateway result stored without toUiModel' }),
     ...ctx.grep(/\.ui-state\.ts$/, /\b\w+DomainModel\b/, { note: 'domain model in UiState' }),
+    ...ctx.grep(/view[-._]?model\.tsx?$/i, /\.value\.\w+/, { fileHas: /Gateway/, not: /toUiModel|Mapper|\.value\.(length|map|success|isSuccess)\b/, note: 'domain fields copied into the state (create UiModel + toUiModel)' }),
+    ...ctx.grep(/view[-._]?model\.tsx?$/i, /[gG]ateway\w*\.\w+\(\s*(\{|\.\.\.)/, { note: 'gateway input built inline (use Mapper.toDataModel)' }),
   ] },
 
   // ── Presentation structure ──
@@ -182,7 +238,10 @@ const rules = [
       ...ctx.files.filter((f) => pres.test(f) && /utils?\.params\.ts$|[^s]-params\.ts$/.test(basename(f)) && /utils/.test(basename(f)) && !/\.utils-params\.ts$/.test(f)).map((f) => fileHit(f, basename(f), 'must be <name>.utils-params.ts')),
       ...ctx.grep(utils, /export default/, { note: 'default export in utils' }),
       ...ctx.grep(utils, /\buse(State|Effect|Ref|Callback|Memo|Context)\(/, { note: 'React hook inside utils (make it a hook)' }),
-      ...ctx.fileCheck(new RegExp(`${pres.source}.*\\.utils-params\\.ts$`), (src) => !/UtilsParams/.test(src) && 'params without XUtilsParams namespace'),
+      ...ctx.fileCheck(new RegExp(`${pres.source}.*\.utils-params\.ts$`), (src) => !/UtilsParams/.test(src) && 'params without XUtilsParams namespace'),
+      ...ctx.files.filter((f) => utils.test(f) && !ctx.exists(f.replace(/\.utils\.ts$/, '.utils-params.ts'))).map((f) => fileHit(f, basename(f).replace('.utils.ts', '.utils-params.ts'), 'missing sibling <name>.utils-params.ts')),
+      ...ctx.grep(utils, /^export (const \w+\s*=\s*(async\s*)?\(|(async\s+)?function \w+\s*\()\s*[a-z_$][\w$]*\s*[?:,)]/, { note: 'positional parameters (use one XUtilsParams.Fn object)' }),
+      ...ctx.grep(utils, /^export (const \w+\s*=\s*(async\s*)?\(|(async\s+)?function \w+\s*\()\s*\{[^}]*\}\s*:\s*(\{|[A-Z]\w*\b(?!\.))/, { not: /UtilsParams\./, note: 'params not typed with XUtilsParams.Fn' }),
     ];
   } },
   { id: 'contexts-provider-conventions', cat: 'Presentation structure', impact: 'HIGH', applies: hasLayers, check: (ctx) => [
@@ -214,7 +273,7 @@ const rules = [
     const skip = /^\s*(import |export \* |\/\/|\*)/;
     return [
       ...ctx.grep(new RegExp(`${ui.source}.*\\.tsx$`), />\s*[A-Za-zÁÉÍÓÚáéíóúñÑ¿¡][^<>{}]{2,}</, { not: /strings\./, note: 'screen text literal in JSX (values/strings)' }),
-      ...ctx.grep(ui, /\b(title|label|text|placeholder|subtitle|description|message|errorText|helperText|accessibilityLabel|accessibilityHint|buttonText|caption|header)\s*(=|:)\s*['"`][^'"`]*[A-Za-zÁÉÍÓÚáéíóúñ]/, { not: skip, note: 'screen text literal in prop (values/strings)' }),
+      ...ctx.grep(ui, /\b(title|label|text|placeholder|subtitle|description|message|errorText|helperText|accessibilityLabel|accessibilityHint|buttonText|caption|header)\s*(=|:)\s*['"`](?:\$\{[^}]*\}|[^'"`$])*?[A-Za-zÁÉÍÓÚáéíóúñ]/, { not: skip, note: 'screen text literal in prop (values/strings)' }),
       ...ctx.grep(code, /(^|[^'"\\])(''|"")(?!['"])/, { not: skip, note: "empty string → strings.common.empty" }).filter(notValues),
       ...ctx.grep(code, /(?:^|[=(,:?!&|[]|\breturn)\s*\/(?![*/\s])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[dgimsuy]*(?=\s*(?:[.,;)\]}]|$))|new RegExp\(\s*['"`]/, { not: skip, note: 'regex literal (values/regex)' }).filter(notValues),
       ...ctx.grep(code, /['"`](DD|dd|D|d)[/.\-](MM|M|MMM|MMMM)[/.\-](YYYY|yyyy|YY|yy)['"`]|['"`](YYYY|yyyy)[/.\-]MM[/.\-](DD|dd)['"`]|['"`](HH|hh|H|h):mm(:ss)?( ?[aA])?['"`]|toLocale(Date|Time)?String\([^)]*\{|Intl\.DateTimeFormat\([^)]*\{/, { not: skip, note: 'date format literal (values/dates)' }).filter(notValues),
